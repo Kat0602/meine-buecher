@@ -18,14 +18,69 @@ load();render();if('serviceWorker'in navigator&&location.protocol==='https:')nav
 const isbnClean=x=>String(x||'').replace(/[^0-9Xx]/g,'').toUpperCase();
 function validISBN(x){if(x.length===13)return /^\d{13}$/.test(x)&&[...x].reduce((a,c,i)=>a+Number(c)*(i%2?3:1),0)%10===0;if(x.length===10){if(!/^\d{9}[\dX]$/.test(x))return false;return [...x].reduce((a,c,i)=>a+(10-i)*(c==='X'?10:Number(c)),0)%11===0}return false}
 function lookupMessage(t){$('lookup-status').textContent=t}
-async function findBook(){const isbn=isbnClean($('lookup-isbn').value||$('form').elements.namedItem('isbn').value);if(!validISBN(isbn)){lookupMessage('Bitte eine gültige ISBN-10 oder ISBN-13 eingeben.');return} $('lookup-isbn').value=isbn;$('form').elements.namedItem('isbn').value=isbn;lookupMessage('Suche Buchdaten …');$('lookup').disabled=true;
-try{let info=null;
-try{const r=await fetch('https://openlibrary.org/api/books?bibkeys=ISBN:'+encodeURIComponent(isbn)+'&format=json&jscmd=data');if(r.ok){const j=await r.json(),b=j['ISBN:'+isbn];if(b?.title)info={title:b.title,author:(b.authors||[]).map(a=>a.name).join(', '),cover:b.cover?.medium||b.cover?.large||''}}}catch(e){}
-if(!info){try{const r=await fetch('https://www.googleapis.com/books/v1/volumes?q=isbn:'+encodeURIComponent(isbn));if(r.ok){const j=await r.json(),b=j.items?.[0]?.volumeInfo;if(b?.title)info={title:b.title,author:(b.authors||[]).join(', '),cover:b.imageLinks?.thumbnail||''}}}catch(e){}}
-if(!info){lookupMessage('Keine Buchdaten gefunden. Du kannst Titel und Autor von Hand eintragen.');return}
-const f=$('form').elements;if(f.namedItem('title').value.trim()&&!confirm('Vorhandenen Titel mit dem Suchergebnis ersetzen?'))return;
-f.namedItem('title').value=info.title;f.namedItem('author').value=info.author||'';if(info.cover&&!currentCover){currentCover=info.cover.replace(/^http:/,'https:');updateCoverPreview();}lookupMessage('✓ Gefunden: '+info.title+'. Angaben bitte prüfen und unten speichern.');
-}catch(e){lookupMessage('Suche fehlgeschlagen. Bitte Internetverbindung prüfen oder Daten von Hand eingeben.')}finally{$('lookup').disabled=false}}
+async function fetchJson(url){
+ const controller=new AbortController();
+ const timeout=setTimeout(()=>controller.abort(),9000);
+ try{const r=await fetch(url,{signal:controller.signal,cache:'no-store'});if(!r.ok)throw Error('HTTP '+r.status);return await r.json()}
+ finally{clearTimeout(timeout)}
+}
+function parseOL(b){
+ if(!b?.title)return null;
+ return {title:b.title,author:(b.authors||[]).map(a=>typeof a==='string'?a:a.name).filter(Boolean).join(', '),cover:b.cover?.large||b.cover?.medium||b.cover?.small||''};
+}
+async function findBook(){
+ const raw=$('lookup-isbn').value.trim()||$('form').elements.namedItem('isbn').value.trim();
+ const isbn=isbnClean(raw);
+ const byISBN=validISBN(isbn);
+ const titleQuery=!byISBN?raw.trim():null;
+ if(!byISBN&&titleQuery.length<3){lookupMessage('Bitte eine gültige ISBN oder mindestens drei Zeichen des Buchtitels eingeben.');return}
+ if(byISBN){$('lookup-isbn').value=isbn;$('form').elements.namedItem('isbn').value=isbn}
+ lookupMessage('Suche in mehreren Buchkatalogen …');$('lookup').disabled=true;
+ let info=null;const failures=[];
+ const candidates=byISBN?[
+  ['Open Library ISBN',`https://openlibrary.org/isbn/${encodeURIComponent(isbn)}.json`,'olEdition'],
+  ['Google Books ISBN',`https://www.googleapis.com/books/v1/volumes?q=isbn:${encodeURIComponent(isbn)}&maxResults=5`,'google'],
+  ['Open Library Suche',`https://openlibrary.org/search.json?isbn=${encodeURIComponent(isbn)}&limit=5`,'olSearch']
+ ]:[
+  ['Google Books Titel',`https://www.googleapis.com/books/v1/volumes?q=intitle:${encodeURIComponent(titleQuery)}&maxResults=10`,'google'],
+  ['Open Library Titel',`https://openlibrary.org/search.json?title=${encodeURIComponent(titleQuery)}&limit=10`,'olSearch']
+ ];
+ for(const [name,url,type] of candidates){
+  try{
+   const j=await fetchJson(url);
+   if(type==='google'){
+    const item=(j.items||[]).find(x=>x.volumeInfo?.title);
+    if(item){const b=item.volumeInfo;info={title:b.title,author:(b.authors||[]).join(', '),cover:b.imageLinks?.thumbnail||'',isbn:(b.industryIdentifiers||[]).find(x=>x.type==='ISBN_13')?.identifier||''}}
+   }else if(type==='olSearch'){
+    const b=j.docs?.find(x=>x.title);
+    if(b)info={title:b.title,author:(b.author_name||[]).join(', '),cover:b.cover_i?`https://covers.openlibrary.org/b/id/${b.cover_i}-M.jpg`:'',isbn:(b.isbn||[]).find(x=>validISBN(x))||''}
+   }else if(type==='olEdition'&&j.title){
+    info={title:j.title,author:'',cover:`https://covers.openlibrary.org/b/isbn/${isbn}-M.jpg`,isbn};
+    // Editions frequently contain author references rather than names.
+    if(j.authors?.length){
+     const names=await Promise.all(j.authors.slice(0,5).map(async a=>{
+      try{return (await fetchJson('https://openlibrary.org'+a.key+'.json')).name||''}catch{return ''}
+     }));
+     info.author=names.filter(Boolean).join(', ');
+    }
+   }
+   if(info?.title)break;
+  }catch(e){failures.push(name+': '+(e.name==='AbortError'?'Zeitüberschreitung':'nicht erreichbar'))}
+ }
+ if(!info){
+  lookupMessage(failures.length===candidates.length?'Die Buchkataloge waren nicht erreichbar. Bitte Internetverbindung prüfen.':'In den abgefragten Buchkatalogen keine Daten gefunden. Du kannst auch nach dem Titel suchen.');
+  $('lookup').disabled=false;return
+ }
+ try{
+  const f=$('form').elements;
+  if(f.namedItem('title').value.trim()&&!confirm('Vorhandenen Titel mit dem Suchergebnis ersetzen?'))return;
+  f.namedItem('title').value=info.title;
+  f.namedItem('author').value=info.author||'';
+  if(!byISBN&&info.isbn){f.namedItem('isbn').value=info.isbn;$('lookup-isbn').value=info.isbn}
+  if(info.cover&&!currentCover){currentCover=info.cover.replace(/^http:/,'https:');updateCoverPreview()}
+  lookupMessage('✓ Gefunden: '+info.title+'. Angaben prüfen und unten speichern.');
+ }finally{$('lookup').disabled=false}
+}
 $('lookup').onclick=findBook;
 $('lookup-isbn').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();findBook()}});
 function stopScanner(){scanLoop=false;if(scanReader){try{scanReader.reset?.()}catch(e){}scanReader=null}if(scanStream){scanStream.getTracks().forEach(t=>t.stop());scanStream=null}const v=$('scan-video');if(v){v.pause();v.srcObject=null}$('scan-controls')?.classList.remove('active')}
