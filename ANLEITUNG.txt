@@ -1,7 +1,9 @@
-Meine Bücher – Version 3
+Meine Bücher – Version 4 (Fehlerbehebung)
 
-7 Dateien direkt in das bestehende GitHub-Repository meine-buecher hochladen und gleichnamige Dateien ersetzen. GitHub Pages bleibt auf main / (root).
+Korrigiert: „+ Buch“ reagiert auf Laptop nicht (Scanner-Initialisierung); Fehler bei leerer Bücherliste. Aktualisierungsdateien auf Version 4 gesetzt.
 
-Neu: ISBN-Barcode scannen, ISBN-Suche, Coverfoto aufnehmen oder auswählen, Cover in der Liste anzeigen. Bilder werden vor dem Speichern verkleinert und lokal auf dem jeweiligen Gerät gespeichert. Cover und Bücher sind im JSON-Backup enthalten.
+Die 7 Dateien in das bestehende GitHub-Repository kat0602/meine-buecher hochladen und gleichnamige Dateien ersetzen. Unter Add file > Upload files alle Dateien auswählen, dann Commit changes. GitHub Pages bleibt wie bisher.
 
-Hinweise: Kamera-Zugriff erlauben; für ISBN-Suche und Safari-Scanner-Bibliothek Internet erforderlich. Barcode-Scanner und Coverfoto-Funktion auf iPhone noch nicht praktisch getestet. Vor Updates vorhandene Bücher als Sicherung exportieren.
+WICHTIG: Vor dem Update vorhandene Bücher über „Sicherung speichern“ exportieren. Nicht die Browserdaten löschen oder die App deinstallieren. Bücher werden weiterhin lokal je Gerät gespeichert; das Update löscht sie nicht.
+
+ISBN-Scanner und Coverfoto sind enthalten; Kamerafunktionen können je nach Gerät und Browser variieren.
