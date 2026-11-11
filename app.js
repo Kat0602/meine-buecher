@@ -54,18 +54,25 @@ async function findBook(){
      $('lookup').disabled=false;return;
     }
    }
-  }catch(e){lookupMessage('Buchhandelsdienst nicht erreichbar. Andere Kataloge werden versucht …')}
+  }catch(e){lookupMessage('Buchhandelsdienst: '+e.message+'. Weitere Kataloge werden versucht …')}
  }
  const tasks=[
+  ['Open Library ISBN',`https://openlibrary.org/isbn/${q}.json`,'olisbn'],
+  ['Open Library Books',`https://openlibrary.org/api/books?bibkeys=ISBN:${q}&format=json&jscmd=data`,'olbooks'],
   ['Google Books',`https://www.googleapis.com/books/v1/volumes?q=${isIsbn?'isbn:':''}${q}&maxResults=10&printType=books`,'google'],
   ['Deutsche Bibliotheken',`https://lobid.org/resources/search?q=${encodeURIComponent(isIsbn?'isbn:'+isbn:raw)}&format=json&size=10`,'lobid'],
   ['Open Library',isIsbn?`https://openlibrary.org/search.json?isbn=${q}&limit=10`:`https://openlibrary.org/search.json?title=${q}&limit=10`,'open'],
  ];
  if(isIsbn)tasks.push(['Inventaire',`https://inventaire.io/api/entities?action=by-uris&uris=${encodeURIComponent('isbn:'+isbn)}`,'inventaire']);
  let found=null,errors=[],completed=0;
- const jobs=tasks.map(async ([name,url,type])=>{
+ const jobs=tasks.filter(x=>isIsbn||!['olisbn','olbooks'].includes(x[2])).map(async ([name,url,type])=>{
   try{
    const j=await fetchJson(url);let info=null;
+   if(type==='olisbn' && isIsbn && j?.title){
+    info={title:j.title,author:'',cover:`https://covers.openlibrary.org/b/isbn/${isbn}-M.jpg?default=false`,isbn,source:name};
+    if(j.authors?.length){try{const names=await Promise.all(j.authors.slice(0,4).map(a=>fetchJson('https://openlibrary.org'+a.key+'.json').then(x=>x.name).catch(()=>'')));info.author=names.filter(Boolean).join(', ')}catch(e){}}
+   }
+   if(type==='olbooks' && isIsbn){const b=j['ISBN:'+isbn];if(b?.title)info={...parseOL(b),isbn,source:name};}
    if(type==='google'){
     const items=j.items||[];
     const v=(items.find(x=>(x.volumeInfo?.industryIdentifiers||[]).some(i=>isbnClean(i.identifier)===isbn))||items[0])?.volumeInfo;
@@ -86,7 +93,7 @@ async function findBook(){
     }
    }
    if(type==='open'){
-    const b=(j.docs||[]).find(x=>x.title);
+    const b=(j.docs||[]).find(x=>x.title&&(!isIsbn||(x.isbn||[]).includes(isbn)));
     if(b)info={title:b.title,author:(b.author_name||[]).join(', '),cover:b.cover_i?`https://covers.openlibrary.org/b/id/${b.cover_i}-M.jpg`:'',isbn:isIsbn?isbn:'',source:name};
    }
    if(type==='inventaire'){
