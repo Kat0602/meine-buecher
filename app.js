@@ -7,7 +7,7 @@ function save(){try{localStorage.setItem(KEY,JSON.stringify(books))}catch(e){ale
 function node(tag,cls,text){const el=document.createElement(tag);if(cls)el.className=cls;if(text!==undefined)el.textContent=text;return el}
 function render(){ $('total').textContent=books.length;$('read').textContent=books.filter(b=>b.status==='read').length;$('unread').textContent=books.filter(b=>b.status!=='read').length;let q=$('search').value.toLocaleLowerCase('de').trim(),f=$('filter').value;let list=books.filter(b=>(f==='all'||(f==='read'?b.status==='read':b.status!=='read'))&&[b.title,b.author,b.isbn,b.series,b.notes].some(x=>String(x||'').toLocaleLowerCase('de').includes(q)));const sort=$('sort').value;if(sort==='title')list.sort((a,b)=>a.title.localeCompare(b.title,'de'));if(sort==='author')list.sort((a,b)=>(a.author||'').localeCompare(b.author||'','de'));if(sort==='new')list.sort((a,b)=>(b.created||0)-(a.created||0));const root=$('books');root.replaceChildren();if(!list.length){const empty=node('div','',books.length?'Keine passenden Bücher gefunden.':'Noch keine Bücher eingetragen. Tippe auf „＋ Buch“.');empty.id='empty';root.append(empty);return}for(const b of list){let card=node('article','book');if(b.cover){const img=node('img','book-cover');img.src=b.cover;img.alt='Cover: '+b.title;img.loading='lazy';card.append(img);card.style.display='flow-root';img.style.float='left';img.style.marginRight='13px'}card.append(node('h3','',b.title),node('p','',b.author||'Autor nicht eingetragen'));let bottom=node('div','bottom');bottom.append(node('span','pill '+(b.status==='read'?'read':''),b.status==='read'?'✓ Gelesen':'○ Ungelesen'),node('span','stars',b.rating?'★'.repeat(+b.rating)+'☆'.repeat(5-(+b.rating)):''));card.append(bottom);if(b.series||b.volume||b.loan||b.notes){let details=node('p','muted',[b.series&&('Reihe: '+b.series+(b.volume?' · Band '+b.volume:'')),b.loan&&'Verliehen an: '+b.loan,b.notes].filter(Boolean).join(' · '));details.style.whiteSpace='pre-wrap';card.append(details)}let edit=node('button','secondary','Bearbeiten');edit.style.marginTop='12px';edit.addEventListener('click',()=>openEditor(b.id));card.append(edit);root.append(card)}}
 function openEditor(id=null){editing=id;const b=books.find(x=>x.id===id);$('form').reset();$('formtitle').textContent=b?'Buch bearbeiten':'Buch hinzufügen';for(const k of ['title','author','isbn','price','status','rating','date','series','volume','loan','notes']){const input=$('form').elements.namedItem(k);input.value=b?(b[k]??(k==='status'?'unread':k==='rating'?'0':'')):(k==='status'?'unread':k==='rating'?'0':'')}currentCover=b?.cover||'';updateCoverPreview();$('cover-file').value='';$('cover-status').textContent='';$('lookup-isbn').value=b?.isbn||'';$('lookup-status').textContent='';stopScanner();$('editor').showModal()}
-$('add').onclick=()=>openEditor();$('cancel').onclick=()=>{stopScanner();$('editor').close()};$('editor').addEventListener('close',stopScanner);$('form').addEventListener('submit',e=>{e.preventDefault();const fd=new FormData(e.target),data={};for(const [k,v] of fd.entries())data[k]=String(v).trim();if(!data.title){alert('Bitte einen Buchtitel eingeben. Ohne Titel kann das Buch nicht gespeichert werden.');return;}data.rating=Number(data.rating)||0;const old=books.find(b=>b.id===editing);const next={...data,cover:currentCover,id:old?.id||((globalThis.crypto?.randomUUID?.())||String(Date.now())+'-'+Math.random()),created:old?.created||Date.now()};const before=books;books=old?books.map(b=>b.id===editing?next:b):[...books,next];if(save()){$('editor').close();render()}else books=before});
+$('add').onclick=()=>openEditor();$('cancel').onclick=()=>{stopScanner();$('editor').close()};$('editor').addEventListener('close',stopScanner);$('form').addEventListener('submit',e=>{e.preventDefault();const fd=new FormData(e.target),data={};for(const [k,v] of fd.entries())data[k]=String(v).trim();if(!data.isbn&&$('lookup-isbn').value.trim()&&validISBN(isbnClean($('lookup-isbn').value)))data.isbn=isbnClean($('lookup-isbn').value);if(!data.title){data.title=data.isbn?'Buch '+data.isbn:'Buch ohne Titel';}data.rating=Number(data.rating)||0;const old=books.find(b=>b.id===editing);const next={...data,cover:currentCover,id:old?.id||((globalThis.crypto?.randomUUID?.())||String(Date.now())+'-'+Math.random()),created:old?.created||Date.now()};const before=books;books=old?books.map(b=>b.id===editing?next:b):[...books,next];if(save()){$('editor').close();render()}else books=before});
 $('search').oninput=render;$('filter').onchange=render;$('sort').onchange=render;
 $('export').onclick=()=>{const blob=new Blob([JSON.stringify({format:'meine-buecher',version:1,exportedAt:new Date().toISOString(),books},null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='meine-buecher-sicherung-'+new Date().toISOString().slice(0,10)+'.json';document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),3000)};
 $('import').onclick=()=>$('file').click();$('file').onchange=async e=>{const file=e.target.files[0];if(!file)return;try{const v=JSON.parse(await file.text());if(v.format!=='meine-buecher'||!Array.isArray(v.books)||!v.books.every(b=>b&&typeof b.title==='string'&&typeof b.id==='string'))throw Error('Ungültige Sicherungsdatei');if(!confirm('Die aktuelle Bücherliste wird durch '+v.books.length+' Bücher aus der Sicherung ersetzt. Fortfahren?'))return;const previous=books;books=v.books;if(save())render();else books=previous}catch(err){alert('Import nicht möglich: '+err.message)}finally{e.target.value=''}};
@@ -57,7 +57,7 @@ async function findBook(){
     if(type==='edition'&&j.title){let author='';if(j.authors?.length){try{const a=await fetchJson('https://openlibrary.org'+j.authors[0].key+'.json');author=a.name||''}catch{}}info={title:j.title,author,cover:j.covers?.[0]?`https://covers.openlibrary.org/b/id/${j.covers[0]}-M.jpg`:'',isbn}}
    }catch(e){errors.push(name+': '+(e.message||'Verbindungsfehler'))}
   }
-  if(!info){lookupMessage(reachable?'Kein passender Katalogeintrag für diese ISBN gefunden. Bitte Titel selbst eintragen und speichern.':'Buchkatalog derzeit nicht erreichbar: '+errors.join('; '));return}
+  if(!info){lookupMessage(reachable?'Kein Katalogtreffer. Über „Google öffnen“ kannst du Titel und Autor nachsehen. Die ISBN ist bereits übernommen und lässt sich speichern.':'Buchkatalog derzeit nicht erreichbar: '+errors.join('; '));return}
   const f=$('form').elements;
   if(f.namedItem('title').value.trim()&&!confirm('Vorhandenen Titel ersetzen?'))return;
   f.namedItem('title').value=info.title;
@@ -71,84 +71,44 @@ async function findBook(){
 $('lookup').onclick=findBook;
 $('lookup-isbn').addEventListener('input',e=>{const v=e.target.value.trim();if(validISBN(isbnClean(v)))$('form').elements.namedItem('isbn').value=isbnClean(v)});
 $('lookup-isbn').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();findBook()}});
-let scanControls=null,scanTimer=null,scanBusy=false;
-function stopScanner(){
- scanLoop=false;if(scanTimer){clearTimeout(scanTimer);scanTimer=null}
- if(scanControls){try{scanControls.stop()}catch{}scanControls=null}
- if(scanReader){try{scanReader.reset?.()}catch{}scanReader=null}
- if(scanStream){scanStream.getTracks().forEach(t=>t.stop());scanStream=null}
- const v=$('scan-video');if(v){try{v.pause()}catch{}if(v.srcObject){v.srcObject.getTracks().forEach(t=>t.stop())}v.srcObject=null}
- $('scan-controls')?.classList.remove('active');
+let htmlScanner=null;
+async function stopScanner(){
+ scanLoop=false;
+ if(htmlScanner){const scanner=htmlScanner;htmlScanner=null;try{await scanner.stop()}catch{}try{await scanner.clear()}catch{}}
+ $('scan-controls').classList.remove('active');
 }
-$('stop-scan').onclick=stopScanner;
+$('stop-scan').onclick=()=>{stopScanner()};
+function loadHtmlScanner(){
+ if(window.Html5Qrcode)return Promise.resolve();
+ return new Promise((resolve,reject)=>{
+  const script=document.createElement('script');
+  script.src='https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js';
+  script.onload=()=>window.Html5Qrcode?resolve():reject(Error('Scanner-Bibliothek fehlt'));
+  script.onerror=()=>reject(Error('Scanner-Bibliothek nicht erreichbar'));
+  document.head.appendChild(script);
+ });
+}
 async function startScanner(){
- stopScanner();scanLoop=true;$('scan-controls').classList.add('active');
- lookupMessage('Barcode-Erkennung wird geladen …');
+ await stopScanner();scanLoop=true;$('scan-controls').classList.add('active');
+ lookupMessage('Scanner wird gestartet …');
  try{
-  await loadScannerLibrary();
-  if(!scanLoop)return;
-  const ZX=window.ZXing;
-  const hints=new Map([[ZX.DecodeHintType.POSSIBLE_FORMATS,[ZX.BarcodeFormat.EAN_13]],[ZX.DecodeHintType.TRY_HARDER,true]]);
-  const reader=new ZX.BrowserMultiFormatReader(hints,180);
-  scanReader=reader;
-  lookupMessage('Scanner bereit. Halte den Strichcode ruhig und vollständig ins Bild.');
-  // Use continuous ZXing decoding instead of the native detector that previously
-  // returned zero results forever on some devices.
-  const controls=await reader.decodeFromVideoDevice(undefined,$('scan-video'),(result,error)=>{
-   if(!scanLoop||!result)return;
-   const value=isbnClean(result.getText?.()||result.text||'');
-   if(validISBN(value))onScanned(value);
-  });
-  if(controls?.stop){if(scanLoop)scanControls=controls;else controls.stop();}
- }catch(e){
-  if(!scanLoop)return;
-  lookupMessage('Ersatzscanner wird gestartet …');
-  try{await startNativeScanner()}
-  catch(err){stopScanner();lookupMessage('Scanner konnte nicht gestartet werden: '+(err.message||err)+'. Bitte ISBN eintippen.')}
- }
+  await loadHtmlScanner();if(!scanLoop)return;
+  const formats=[window.Html5QrcodeSupportedFormats.EAN_13];
+  const scanner=new Html5Qrcode('scan-reader',{formatsToSupport:formats,verbose:false});
+  htmlScanner=scanner;
+  await scanner.start({facingMode:'environment'}, {fps:12,qrbox:(w,h)=>({width:Math.max(160,Math.min(w-24,320)),height:Math.max(90,Math.min(h-24,160))})},decoded=>{
+   const isbn=isbnClean(decoded);if(validISBN(isbn))onScanned(isbn);
+  },()=>{});
+  if(scanLoop)lookupMessage('Kamera aktiv – den gesamten Strichcode im Rahmen halten.');
+ }catch(e){await stopScanner();lookupMessage('Scannerfehler: '+(e.message||e)+'. ISBN kann weiterhin eingetippt werden.')}
 }
-async function startNativeScanner(){
- if(!('BarcodeDetector'in window))throw Error('Barcode-Erkennung im Browser nicht verfügbar');
- const detector=new BarcodeDetector({formats:['ean_13']});
- const video=$('scan-video');
- const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}},audio:false});
- if(!scanLoop){stream.getTracks().forEach(t=>t.stop());return}
- scanStream=stream;video.srcObject=stream;await video.play();
- lookupMessage('Ersatzscanner aktiv – Strichcode ruhig ins Bild halten.');
- const loop=async()=>{
-  if(!scanLoop)return;
-  if(!scanBusy&&video.readyState>=2){
-   scanBusy=true;
-   try{
-    const results=await detector.detect(video);
-    for(const r of results){
-     const found=isbnClean(r.rawValue);
-     if(validISBN(found)){onScanned(found);return}
-    }
-   }catch(e){stopScanner();lookupMessage('Barcode-Erkennung fehlgeschlagen: '+(e.message||e));return}
-   finally{scanBusy=false}
-  }
-  if(scanLoop)scanTimer=setTimeout(loop,200);
- };
- loop();
-}
-async function loadScannerLibrary(){
- if(window.ZXing?.BrowserMultiFormatReader)return;
- const urls=[
-  'https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js',
-  'https://unpkg.com/@zxing/library@0.21.3/umd/index.min.js',
-  'https://cdn.jsdelivr.net/npm/@zxing/library@0.20.0/umd/index.min.js'
- ];
- for(const url of urls){
-  try{await new Promise((resolve,reject)=>{const script=document.createElement('script');script.src=url;script.onload=resolve;script.onerror=()=>reject(Error('Laden fehlgeschlagen'));document.head.appendChild(script)});
-   if(window.ZXing?.BrowserMultiFormatReader)return;
-  }catch(e){}
- }
- throw Error('Barcode-Bibliothek nicht erreichbar');
-}
-function onScanned(isbn){stopScanner();$('lookup-isbn').value=isbn;$('form').elements.namedItem('isbn').value=isbn;lookupMessage('ISBN erkannt: '+isbn+'. Suche Buchdaten …');findBook()}
-$('start-scan').onclick=startScanner;
-
+function onScanned(isbn){$('lookup-isbn').value=isbn;$('form').elements.namedItem('isbn').value=isbn;stopScanner();lookupMessage('ISBN erkannt: '+isbn+'. Suche läuft …');findBook()}
+$('start-scan').onclick=()=>{startScanner()};
+$('google-search').onclick=()=>{
+ const query=$('lookup-isbn').value.trim()||$('form').elements.namedItem('isbn').value.trim();
+ if(!query){lookupMessage('Bitte zuerst eine ISBN oder einen Titel eingeben.');return}
+ window.open('https://www.google.com/search?q='+encodeURIComponent(query+' Buch'),'_blank','noopener,noreferrer');
+};
 // Cover image: downscale locally to limit browser storage use. No image upload.
 function updateCoverPreview(){const im=$('cover-preview');im.style.display=currentCover?'block':'none';if(currentCover)im.src=currentCover;else im.removeAttribute('src');}
 $('cover-remove').onclick=()=>{currentCover='';$('cover-file').value='';updateCoverPreview();$('cover-status').textContent='Cover entfernt (erst mit „Speichern“ übernehmen).'};

@@ -1,9 +1,1 @@
-Meine Bücher – Version 9
-
-WICHTIG: Vor dem Update vorhandene Bücher über „Sicherung speichern“ sichern.
-
-Alle sieben Dateien in das vorhandene GitHub-Repository „meine-buecher“ hochladen und Änderungen bestätigen. Danach https://kat0602.github.io/meine-buecher/?v=9 öffnen. Oben muss „Version 9“ stehen.
-
-Änderungen: ISBN-Eingabe direkt ins Buchformular; Buchsuche mit Fehleranzeige und mehreren Katalogen; Scanner mit mehreren Ladequellen; verbesserte Scanner-Abbruchlogik.
-
-Einschränkung: Scanner und Onlinekataloge konnten nicht auf einem echten iPhone getestet werden. Es ist möglich, dass die Barcode-Erkennung weiterhin nicht funktioniert oder ein bestimmtes Buch in öffentlichen Katalogen fehlt.
+Version 10 – letzter Reparaturversuch. Vor Austausch Sicherung exportieren. Sieben Dateien in bestehendes GitHub-Repository hochladen. App unter https://kat0602.github.io/meine-buecher/?v=10 aufrufen. Änderungen: neue Scanner-Bibliothek html5-qrcode; ISBN kann ohne Buchtitel gespeichert werden; Google-Suchknopf als Fallback. Kein automatisches Auslesen von Google-Ergebnissen. Nicht auf einem echten iPhone getestet.
