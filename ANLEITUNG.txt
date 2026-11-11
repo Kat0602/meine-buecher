@@ -1,11 +1,7 @@
-MEINE BÜCHER – Installation
+Meine Bücher – Version 3
 
-1. ZIP-Datei auf dem Windows-PC entpacken.
-2. Alle Dateien aus dem Ordner buecher-app auf einen HTTPS-Webhost hochladen (z. B. kostenlos über GitHub Pages).
-3. Auf dem iPhone die veröffentlichte HTTPS-Adresse in Safari öffnen.
-4. In Safari auf Teilen und „Zum Home-Bildschirm“ tippen.
-5. Die App einmal bei bestehender Internetverbindung vollständig öffnen. Danach ist sie offline nutzbar.
+7 Dateien direkt in das bestehende GitHub-Repository meine-buecher hochladen und gleichnamige Dateien ersetzen. GitHub Pages bleibt auf main / (root).
 
-WICHTIG: Die App funktioniert nicht als installierbare Offline-App, wenn die HTML-Datei nur lokal aus der Dateien-App geöffnet wird. Sie muss zuerst über HTTPS bereitgestellt werden. Die Bücher bleiben im lokalen Speicher dieses Geräts und dieser Website; regelmäßige JSON-Sicherungen über „Sicherung speichern“ sind dringend empfohlen. Löschen von Website-Daten kann die Bücher löschen. Sicherungsdateien lassen sich über „Sicherung einlesen“ zurückspielen.
+Neu: ISBN-Barcode scannen, ISBN-Suche, Coverfoto aufnehmen oder auswählen, Cover in der Liste anzeigen. Bilder werden vor dem Speichern verkleinert und lokal auf dem jeweiligen Gerät gespeichert. Cover und Bücher sind im JSON-Backup enthalten.
 
-Keine Anmeldung, keine externe Datenbank, keine Gebühren durch die App selbst. Ein Hosting-Anbieter kann eigene Bedingungen haben.
+Hinweise: Kamera-Zugriff erlauben; für ISBN-Suche und Safari-Scanner-Bibliothek Internet erforderlich. Barcode-Scanner und Coverfoto-Funktion auf iPhone noch nicht praktisch getestet. Vor Updates vorhandene Bücher als Sicherung exportieren.
