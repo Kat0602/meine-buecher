@@ -30,17 +30,37 @@ $('lookup').onclick=findBook;
 $('lookup-isbn').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();findBook()}});
 function stopScanner(){scanLoop=false;if(scanReader){try{scanReader.reset?.()}catch(e){}scanReader=null}if(scanStream){scanStream.getTracks().forEach(t=>t.stop());scanStream=null}const v=$('scan-video');if(v){v.pause();v.srcObject=null}$('scan-controls')?.classList.remove('active')}
 $('stop-scan').onclick=stopScanner;
-async function startScanner(){stopScanner();lookupMessage('Kamera wird gestartet …');if(!navigator.mediaDevices?.getUserMedia){lookupMessage('Kamera hier nicht verfügbar. ISBN bitte eintippen.');return}
-try{scanStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}},audio:false});const v=$('scan-video');v.srcObject=scanStream;$('scan-controls').classList.add('active');await v.play();scanLoop=true;
-if('BarcodeDetector'in window){try{const supported=await BarcodeDetector.getSupportedFormats();if(supported.includes('ean_13')||supported.includes('ean_8')){const d=new BarcodeDetector({formats:['ean_13','ean_8'].filter(x=>supported.includes(x))});while(scanLoop){const codes=await d.detect(v);const found=codes.map(c=>isbnClean(c.rawValue)).find(validISBN);if(found){onScanned(found);return}await new Promise(r=>setTimeout(r,180))}return}}catch(e){}}
-// Safari fallback: ZXing browser library loaded on demand (internet required).
-lookupMessage('Scanner wird geladen …');await loadScannerLibrary();if(!scanLoop)return;
-const hints=new Map();if(window.ZXing?.DecodeHintType){hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS,[ZXing.BarcodeFormat.EAN_13,ZxingFallback('EAN_8')].filter(Boolean))}
-const reader=new ZXing.BrowserMultiFormatReader(hints);scanReader=reader;lookupMessage('Strichcode vor die Kamera halten …');
-while(scanLoop){try{const result=await reader.decodeOnceFromVideoElement(v);const found=isbnClean(result?.text||result?.getText?.());if(validISBN(found)){onScanned(found);return}}catch(e){if(!scanLoop)break;await new Promise(r=>setTimeout(r,250))}}
-}catch(e){lookupMessage('Kamera/Scanner nicht verfügbar: '+(e?.name==='NotAllowedError'?'Kamerazugriff nicht erlaubt.':'Bitte Internetverbindung prüfen oder ISBN eintippen.'));stopScanner()}}
-function ZxingFallback(name){return window.ZXing?.BarcodeFormat?.[name]}
-function loadScannerLibrary(){if(window.ZXing?.BrowserMultiFormatReader)return Promise.resolve();return new Promise((resolve,reject)=>{const s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js';s.onload=()=>window.ZXing?.BrowserMultiFormatReader?resolve():reject(Error('Scanner-Bibliothek nicht verfügbar'));s.onerror=()=>reject(Error('Scanner konnte nicht geladen werden'));document.head.appendChild(s)})}
+async function startScanner(){
+ stopScanner();lookupMessage('Scanner wird gestartet …');
+ if(!navigator.mediaDevices?.getUserMedia){lookupMessage('Kamera nicht verfügbar. ISBN bitte eintippen.');return}
+ try{
+  await loadScannerLibrary();
+  const ZX=window.ZXing;
+  const hints=new Map();
+  hints.set(ZX.DecodeHintType.POSSIBLE_FORMATS,[ZX.BarcodeFormat.EAN_13,ZX.BarcodeFormat.EAN_8]);
+  hints.set(ZX.DecodeHintType.TRY_HARDER,true);
+  const reader=new ZX.BrowserMultiFormatReader(hints,300);
+  scanReader=reader;scanLoop=true;
+  $('scan-controls').classList.add('active');
+  lookupMessage('Kamera startet …');
+  // Continuous decoding is more reliable than repeated decodeOnce on Safari.
+  await reader.decodeFromVideoDevice(undefined,$('scan-video'),(result,error)=>{
+   if(!scanLoop||!result)return;
+   const found=isbnClean(result.getText?.()||result.text||'');
+   if(validISBN(found))onScanned(found);
+  });
+  if(scanLoop)lookupMessage('Strichcode vor die Kamera halten …');
+ }catch(e){stopScanner();lookupMessage('Scannerfehler: '+(e?.message||'Unbekannter Fehler')+'. ISBN bitte eintippen.');}
+}
+function loadScannerLibrary(){
+ if(window.ZXing?.BrowserMultiFormatReader)return Promise.resolve();
+ return new Promise((resolve,reject)=>{
+  const s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js';
+  s.onload=()=>window.ZXing?.BrowserMultiFormatReader?resolve():reject(Error('Scanner-Bibliothek fehlt'));
+  s.onerror=()=>reject(Error('Scanner-Bibliothek konnte nicht geladen werden'));
+  document.head.appendChild(s);
+ });
+}
 function onScanned(isbn){stopScanner();$('lookup-isbn').value=isbn;$('form').elements.namedItem('isbn').value=isbn;lookupMessage('ISBN erkannt: '+isbn+'. Suche Buchdaten …');findBook()}
 $('start-scan').onclick=startScanner;
 
