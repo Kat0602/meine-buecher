@@ -1,5 +1,5 @@
-MEINE BÜCHER – VERSION 13
-Alle sieben Dateien in das bestehende GitHub-Repository hochladen und ersetzen.
-App: https://kat0602.github.io/meine-buecher/?v=13
-Zusätzliche Buchkatalog-Abfragen: Open Library ISBN und Books API. Bestehender Scanner, Cloudflare-Dienst und lokale Buchdaten bleiben unverändert.
-WICHTIG: Kein Zugriff auf kostenpflichtige Buchhandelsdatenbanken; nicht jede ISBN kann automatisch gefunden werden. Keine Live-Tests auf dem iPhone durchgeführt.
+MEINE BÜCHER – VERSION 14
+Alle sieben Dateien im GitHub-Repository ersetzen.
+App: https://kat0602.github.io/meine-buecher/?v=14
+Änderungen: zusätzliche ISBN-Volltextsuche bei Open Library, längere Antwortzeit für Buchquellen, verbesserter ISBN-Abgleich. Cloudflare/Thalia bleibt erste Quelle.
+Hinweis: Öffentliche Kataloge haben keine vollständige Abdeckung deutscher Bücher.

@@ -20,7 +20,7 @@ function validISBN(x){if(x.length===13)return /^\d{13}$/.test(x)&&[...x].reduce(
 function lookupMessage(t){$('lookup-status').textContent=t}
 async function fetchJson(url){
  const controller=new AbortController();
- const timeout=setTimeout(()=>controller.abort(),9000);
+ const timeout=setTimeout(()=>controller.abort(),14000);
  try{const r=await fetch(url,{signal:controller.signal,cache:'no-store'});if(!r.ok)throw Error('HTTP '+r.status);return await r.json()}
  finally{clearTimeout(timeout)}
 }
@@ -61,6 +61,7 @@ async function findBook(){
   ['Open Library Books',`https://openlibrary.org/api/books?bibkeys=ISBN:${q}&format=json&jscmd=data`,'olbooks'],
   ['Google Books',`https://www.googleapis.com/books/v1/volumes?q=${isIsbn?'isbn:':''}${q}&maxResults=10&printType=books`,'google'],
   ['Deutsche Bibliotheken',`https://lobid.org/resources/search?q=${encodeURIComponent(isIsbn?'isbn:'+isbn:raw)}&format=json&size=10`,'lobid'],
+  ['Open Library Volltext',`https://openlibrary.org/search.json?q=${q}&limit=25`,'open'],
   ['Open Library',isIsbn?`https://openlibrary.org/search.json?isbn=${q}&limit=10`:`https://openlibrary.org/search.json?title=${q}&limit=10`,'open'],
  ];
  if(isIsbn)tasks.push(['Inventaire',`https://inventaire.io/api/entities?action=by-uris&uris=${encodeURIComponent('isbn:'+isbn)}`,'inventaire']);
@@ -93,7 +94,7 @@ async function findBook(){
     }
    }
    if(type==='open'){
-    const b=(j.docs||[]).find(x=>x.title&&(!isIsbn||(x.isbn||[]).includes(isbn)));
+    const b=(j.docs||[]).find(x=>x.title&&(!isIsbn||(x.isbn||[]).some(id=>isbnClean(id)===isbn)));
     if(b)info={title:b.title,author:(b.author_name||[]).join(', '),cover:b.cover_i?`https://covers.openlibrary.org/b/id/${b.cover_i}-M.jpg`:'',isbn:isIsbn?isbn:'',source:name};
    }
    if(type==='inventaire'){
@@ -109,7 +110,7 @@ async function findBook(){
  try{
   const results=await Promise.all(jobs);
   found=results.find(x=>x?.title)||null;
-  if(!found){lookupMessage('Kein Treffer in den öffentlichen Buchkatalogen. Die ISBN ist übernommen. Du kannst Titel und Autor selbst ergänzen und das Buch speichern. '+(errors.length?'Nicht erreichbar: '+errors.join(' | '):''));return}
+  if(!found){lookupMessage('Kein Treffer bei den angeschlossenen Buchquellen.  Die ISBN ist übernommen. Titel und Autor können manuell ergänzt werden. '+(errors.length?'Nicht erreichbar: '+errors.join(' | '):''));return}
   if(f.namedItem('title').value.trim()&&!confirm('Vorhandenen Titel ersetzen?'))return;
   f.namedItem('title').value=found.title;
   if(found.author)f.namedItem('author').value=found.author;
