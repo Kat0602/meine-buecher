@@ -28,45 +28,71 @@ function parseOL(b){
  if(!b?.title)return null;
  return {title:b.title,author:(b.authors||[]).map(a=>typeof a==='string'?a:a.name).filter(Boolean).join(', '),cover:b.cover?.large||b.cover?.medium||b.cover?.small||''};
 }
+// Every provider is optional. An unavailable catalog must never prevent saving.
 async function findBook(){
- const raw=$('lookup-isbn').value.trim()||$('form').elements.namedItem('isbn').value.trim();
+ const f=$('form').elements;
+ const raw=$('lookup-isbn').value.trim()||f.namedItem('isbn').value.trim();
  const isbn=isbnClean(raw),isIsbn=validISBN(isbn);
  if(!isIsbn&&raw.length<3){lookupMessage('Bitte eine gültige ISBN oder einen Buchtitel eingeben.');return}
- if(isIsbn){$('lookup-isbn').value=isbn;$('form').elements.namedItem('isbn').value=isbn}
- $('lookup').disabled=true;lookupMessage('Buchdaten werden gesucht …');
- let info=null,reachable=0,errors=[];
- const sources=isIsbn?[
-  ['Open Library Bücher',`https://openlibrary.org/api/books?bibkeys=ISBN:${encodeURIComponent(isbn)}&format=json&jscmd=data`,'book'],
-  ['Open Library Suche',`https://openlibrary.org/search.json?isbn=${encodeURIComponent(isbn)}&limit=5`,'search'],
-  ['Open Library Ausgabe',`https://openlibrary.org/isbn/${encodeURIComponent(isbn)}.json`,'edition'],
-  ['Deutsche Bibliotheken',`https://lobid.org/resources/search?q=${encodeURIComponent('isbn:'+isbn)}&format=json&size=5`,'lobid']
- ]:[['lobid Deutsche Bibliotheken',`https://lobid.org/resources/search?q=${encodeURIComponent(raw)}&format=json&size=5`,'lobid'],['Open Library Titelsuche',`https://openlibrary.org/search.json?title=${encodeURIComponent(raw)}&limit=10`,'search']];
- try{
-  for(const [name,url,type] of sources){if(info?.title)break;
-   try{const j=await fetchJson(url);reachable++;
-    if(type==='lobid'){
-      const hit=(j.member||[]).find(x=>x.title && (!isIsbn || JSON.stringify(x.isbn||x.identifiedBy||[]).includes(isbn)));
-      if(hit){const title=typeof hit.title==='string'?hit.title:(hit.title?.[0]||'');
-       const contributions=hit.contribution||[];
-       const authors=contributions.flatMap(c=>(c.agent||[]).map(a=>a.label||a.name||'')).filter(Boolean);
-       info={title,author:authors.join(', '),cover:'',isbn:isIsbn?isbn:''};
-      }
+ if(isIsbn){$('lookup-isbn').value=isbn;f.namedItem('isbn').value=isbn}
+ $('lookup').disabled=true;
+ lookupMessage('Suche in mehreren Buchkatalogen …');
+ const q=encodeURIComponent(isIsbn?isbn:raw);
+ const tasks=[
+  ['Google Books',`https://www.googleapis.com/books/v1/volumes?q=${isIsbn?'isbn:':''}${q}&maxResults=10&printType=books`,'google'],
+  ['Deutsche Bibliotheken',`https://lobid.org/resources/search?q=${encodeURIComponent(isIsbn?'isbn:'+isbn:raw)}&format=json&size=10`,'lobid'],
+  ['Open Library',isIsbn?`https://openlibrary.org/search.json?isbn=${q}&limit=10`:`https://openlibrary.org/search.json?title=${q}&limit=10`,'open'],
+ ];
+ if(isIsbn)tasks.push(['Inventaire',`https://inventaire.io/api/entities?action=by-uris&uris=${encodeURIComponent('isbn:'+isbn)}`,'inventaire']);
+ let found=null,errors=[],completed=0;
+ const jobs=tasks.map(async ([name,url,type])=>{
+  try{
+   const j=await fetchJson(url);let info=null;
+   if(type==='google'){
+    const items=j.items||[];
+    const v=(items.find(x=>(x.volumeInfo?.industryIdentifiers||[]).some(i=>isbnClean(i.identifier)===isbn))||items[0])?.volumeInfo;
+    if(v?.title)info={title:v.title,author:(v.authors||[]).join(', '),cover:v.imageLinks?.thumbnail?.replace(/^http:/,'https:')||'',isbn:isIsbn?isbn:'',source:name};
+   }
+   if(type==='lobid'){
+    const items=j.member||[];
+    const hit=items.find(x=>{
+     const ids=JSON.stringify(x.isbn||x.identifiedBy||[]);
+     return x.title&&(!isIsbn||ids.includes(isbn));
+    });
+    if(hit){
+     const title=typeof hit.title==='string'?hit.title:Array.isArray(hit.title)?hit.title[0]:hit.title?.label||'';
+     const authors=(hit.contribution||[]).flatMap(c=>{
+      const a=c.agent||[];return (Array.isArray(a)?a:[a]).map(x=>typeof x==='string'?x:x.label||x.name||'');
+     }).filter(Boolean);
+     if(title)info={title,author:authors.join(', '),cover:'',isbn:isIsbn?isbn:'',source:name};
     }
-    if(type==='book'){const b=j['ISBN:'+isbn];if(b?.title)info={title:b.title,author:(b.authors||[]).map(a=>a.name).filter(Boolean).join(', '),cover:b.cover?.medium||'',isbn}}
-    if(type==='search'){const b=j.docs?.find(x=>x.title);if(b)info={title:b.title,author:(b.author_name||[]).join(', '),cover:b.cover_i?`https://covers.openlibrary.org/b/id/${b.cover_i}-M.jpg`:'',isbn:isIsbn?isbn:(b.isbn||[]).find(validISBN)||''}}
-    if(type==='edition'&&j.title){let author='';if(j.authors?.length){try{const a=await fetchJson('https://openlibrary.org'+j.authors[0].key+'.json');author=a.name||''}catch{}}info={title:j.title,author,cover:j.covers?.[0]?`https://covers.openlibrary.org/b/id/${j.covers[0]}-M.jpg`:'',isbn}}
-   }catch(e){errors.push(name+': '+(e.message||'Verbindungsfehler'))}
-  }
-  if(!info){lookupMessage(reachable?'Kein Katalogtreffer. Über „Google öffnen“ kannst du Titel und Autor nachsehen. Die ISBN ist bereits übernommen und lässt sich speichern.':'Buchkatalog derzeit nicht erreichbar: '+errors.join('; '));return}
-  const f=$('form').elements;
+   }
+   if(type==='open'){
+    const b=(j.docs||[]).find(x=>x.title);
+    if(b)info={title:b.title,author:(b.author_name||[]).join(', '),cover:b.cover_i?`https://covers.openlibrary.org/b/id/${b.cover_i}-M.jpg`:'',isbn:isIsbn?isbn:'',source:name};
+   }
+   if(type==='inventaire'){
+    const entity=Object.values(j.entities||{})[0];
+    const claims=entity?.claims||{};
+    const title=claims['wdt:P1476']?.[0]||entity?.label||'';
+    if(typeof title==='string'&&title)info={title,author:'',cover:'',isbn,source:name};
+   }
+   return info;
+  }catch(e){errors.push(name+': '+(e.message||e));return null}
+  finally{completed++}
+ });
+ try{
+  const results=await Promise.all(jobs);
+  found=results.find(x=>x?.title)||null;
+  if(!found){lookupMessage('Kein Treffer in den öffentlichen Buchkatalogen. Die ISBN ist übernommen. Du kannst Titel und Autor selbst ergänzen und das Buch speichern. '+(errors.length?'Nicht erreichbar: '+errors.join(' | '):''));return}
   if(f.namedItem('title').value.trim()&&!confirm('Vorhandenen Titel ersetzen?'))return;
-  f.namedItem('title').value=info.title;
-  f.namedItem('author').value=info.author||'';
-  if(info.isbn){f.namedItem('isbn').value=info.isbn;$('lookup-isbn').value=info.isbn}
-  if(info.series&&!f.namedItem('series').value)f.namedItem('series').value=info.series;
-  if(info.cover&&!currentCover){currentCover=info.cover.replace(/^http:/,'https:');updateCoverPreview()}
-  lookupMessage('✓ Buch gefunden: '+info.title+'. Bitte Angaben prüfen und unten speichern.');
- }catch(err){lookupMessage('Fehler bei der Buchsuche: '+(err.message||err)+'. Die ISBN kannst du trotzdem speichern.')}finally{$('lookup').disabled=false}
+  f.namedItem('title').value=found.title;
+  if(found.author)f.namedItem('author').value=found.author;
+  if(found.isbn){f.namedItem('isbn').value=found.isbn;$('lookup-isbn').value=found.isbn}
+  if(found.cover&&!currentCover){currentCover=found.cover;updateCoverPreview()}
+  lookupMessage('✓ Buch gefunden über '+found.source+': '+found.title+'. Bitte prüfen und speichern.');
+ }catch(e){lookupMessage('Buchsuche fehlgeschlagen: '+(e.message||e)+'. Die ISBN bleibt gespeichert.');}
+ finally{$('lookup').disabled=false}
 }
 $('lookup').onclick=findBook;
 $('lookup-isbn').addEventListener('input',e=>{const v=e.target.value.trim();if(validISBN(isbnClean(v)))$('form').elements.namedItem('isbn').value=isbnClean(v)});
