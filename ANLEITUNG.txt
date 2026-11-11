@@ -1,8 +1,9 @@
-Meine Bücher Version 8
+Meine Bücher – Version 9
 
-Vor dem Austausch eine Sicherung der vorhandenen Bücher speichern.
-Alle sieben Dateien ins bestehende GitHub-Repository meine-buecher hochladen und Änderungen bestätigen.
-Danach https://kat0602.github.io/meine-buecher/?test=8 öffnen.
+WICHTIG: Vor dem Update vorhandene Bücher über „Sicherung speichern“ sichern.
 
-Änderungen: Scanner nutzt ZXing kontinuierlich zuerst, nativer Scanner nur als Ersatz; zusätzliche Suche über lobid (deutsche Bibliotheken); fest hinterlegtes Testbuch entfernt.
-Hinweis: Die Funktionen konnten nicht auf einem echten iPhone geprüft werden. Nicht jedes Buch ist in öffentlichen Katalogen vorhanden.
+Alle sieben Dateien in das vorhandene GitHub-Repository „meine-buecher“ hochladen und Änderungen bestätigen. Danach https://kat0602.github.io/meine-buecher/?v=9 öffnen. Oben muss „Version 9“ stehen.
+
+Änderungen: ISBN-Eingabe direkt ins Buchformular; Buchsuche mit Fehleranzeige und mehreren Katalogen; Scanner mit mehreren Ladequellen; verbesserte Scanner-Abbruchlogik.
+
+Einschränkung: Scanner und Onlinekataloge konnten nicht auf einem echten iPhone getestet werden. Es ist möglich, dass die Barcode-Erkennung weiterhin nicht funktioniert oder ein bestimmtes Buch in öffentlichen Katalogen fehlt.
