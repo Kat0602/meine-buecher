@@ -14,7 +14,7 @@ $('import').onclick=()=>$('file').click();$('file').onchange=async e=>{const fil
 load();render();if('serviceWorker'in navigator&&location.protocol==='https:')navigator.serviceWorker.register('./sw.js').catch(()=>{});
 
 
-// ISBN lookup and camera barcode scanning. No book data leaves the browser except ISBN queries to public catalogs.
+// ISBN lookup via the user's Cloudflare Worker; scanning remains unchanged.
 const isbnClean=x=>String(x||'').replace(/[^0-9Xx]/g,'').toUpperCase();
 function validISBN(x){if(x.length===13)return /^\d{13}$/.test(x)&&[...x].reduce((a,c,i)=>a+Number(c)*(i%2?3:1),0)%10===0;if(x.length===10){if(!/^\d{9}[\dX]$/.test(x))return false;return [...x].reduce((a,c,i)=>a+(10-i)*(c==='X'?10:Number(c)),0)%11===0}return false}
 function lookupMessage(t){$('lookup-status').textContent=t}
@@ -36,8 +36,26 @@ async function findBook(){
  if(!isIsbn&&raw.length<3){lookupMessage('Bitte eine gültige ISBN oder einen Buchtitel eingeben.');return}
  if(isIsbn){$('lookup-isbn').value=isbn;f.namedItem('isbn').value=isbn}
  $('lookup').disabled=true;
- lookupMessage('Suche in mehreren Buchkatalogen …');
+ lookupMessage('Buchdaten werden über Thalia/Hugendubel gesucht …');
  const q=encodeURIComponent(isIsbn?isbn:raw);
+ const workerUrl='https://meine-buecher-suche.brittafothke.workers.dev';
+ if(workerUrl && isIsbn){
+  try{
+   const data=await fetchJson(workerUrl.replace(/\/$/,'')+'/?isbn='+encodeURIComponent(isbn));
+   if(data?.found===true && data?.title){
+    if(!f.namedItem('title').value.trim()||confirm('Vorhandenen Titel ersetzen?')){
+     f.namedItem('title').value=data.title;
+     if(data.author)f.namedItem('author').value=data.author;
+     if(data.series)f.namedItem('series').value=data.series;
+     if(data.volume)f.namedItem('volume').value=data.volume;
+     if(data.price)f.namedItem('price').value=String(data.price).replace('.',',');
+     if(data.cover&&!currentCover){currentCover=data.cover;updateCoverPreview()}
+     lookupMessage('✓ Buchdaten übernommen über '+(data.source||'Buchhandel')+'. Bitte prüfen und speichern.');
+     $('lookup').disabled=false;return;
+    }
+   }
+  }catch(e){lookupMessage('Buchhandelsdienst nicht erreichbar. Andere Kataloge werden versucht …')}
+ }
  const tasks=[
   ['Google Books',`https://www.googleapis.com/books/v1/volumes?q=${isIsbn?'isbn:':''}${q}&maxResults=10&printType=books`,'google'],
   ['Deutsche Bibliotheken',`https://lobid.org/resources/search?q=${encodeURIComponent(isIsbn?'isbn:'+isbn:raw)}&format=json&size=10`,'lobid'],

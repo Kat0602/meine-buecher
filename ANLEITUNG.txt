@@ -1,1 +1,15 @@
-Version 11: Scanner aus Version 10 unverändert. Buchsuche parallel über Google Books, lobid, Open Library und Inventaire. Keine feste ISBN-Datenbank oder erfundene Treffer. Bei fehlenden Katalogeinträgen bleibt die ISBN gespeichert und der Titel kann manuell ergänzt werden. Die Google-Websuche ist keine Daten-API. Vor dem Austausch Buchbestand sichern. Alle sieben Dateien in das GitHub-Repository hochladen. Browser- und iPhone-Livetest nicht möglich.
+Meine Bücher – Version 78.000
+
+Die Cloudflare-Worker-Adresse ist fest eingebaut. Du musst bei Cloudflare nichts mehr eintragen.
+
+Vor dem Hochladen eine Buchsicherung exportieren.
+Die sieben Web-App-Dateien (index.html, app.js, sw.js, manifest.webmanifest, icon-192.png, icon-512.png sowie optional ANLEITUNG.txt) ins vorhandene GitHub-Repository hochladen.
+
+Die Datei worker.js NICHT auf GitHub hochladen: Sie gehört zum bereits veröffentlichten Cloudflare-Dienst und ist hier nicht enthalten.
+
+Aufruf: https://kat0602.github.io/meine-buecher/?v=78000
+
+Scannen oder ISBN eingeben, Buchdaten suchen, Felder prüfen und Buch speichern.
+Für ISBN 9783989426023 lieferte der Cloudflare-Dienst beim Test Titel, Autorin und Cover. Andere Bücher können von Händlerseiten fehlen oder blockiert werden.
+
+Die GitHub-App ist nicht automatisch mit Cloudflare als Hostingdienst gekoppelt: sie ruft den Worker über HTTPS auf.
