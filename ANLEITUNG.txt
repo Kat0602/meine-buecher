@@ -1,9 +1,8 @@
-Meine Bücher – Version 4 (Fehlerbehebung)
+Meine Bücher Version 8
 
-Korrigiert: „+ Buch“ reagiert auf Laptop nicht (Scanner-Initialisierung); Fehler bei leerer Bücherliste. Aktualisierungsdateien auf Version 4 gesetzt.
+Vor dem Austausch eine Sicherung der vorhandenen Bücher speichern.
+Alle sieben Dateien ins bestehende GitHub-Repository meine-buecher hochladen und Änderungen bestätigen.
+Danach https://kat0602.github.io/meine-buecher/?test=8 öffnen.
 
-Die 7 Dateien in das bestehende GitHub-Repository kat0602/meine-buecher hochladen und gleichnamige Dateien ersetzen. Unter Add file > Upload files alle Dateien auswählen, dann Commit changes. GitHub Pages bleibt wie bisher.
-
-WICHTIG: Vor dem Update vorhandene Bücher über „Sicherung speichern“ exportieren. Nicht die Browserdaten löschen oder die App deinstallieren. Bücher werden weiterhin lokal je Gerät gespeichert; das Update löscht sie nicht.
-
-ISBN-Scanner und Coverfoto sind enthalten; Kamerafunktionen können je nach Gerät und Browser variieren.
+Änderungen: Scanner nutzt ZXing kontinuierlich zuerst, nativer Scanner nur als Ersatz; zusätzliche Suche über lobid (deutsche Bibliotheken); fest hinterlegtes Testbuch entfernt.
+Hinweis: Die Funktionen konnten nicht auf einem echten iPhone geprüft werden. Nicht jedes Buch ist in öffentlichen Katalogen vorhanden.

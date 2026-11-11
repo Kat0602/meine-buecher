@@ -28,29 +28,36 @@ function parseOL(b){
  if(!b?.title)return null;
  return {title:b.title,author:(b.authors||[]).map(a=>typeof a==='string'?a:a.name).filter(Boolean).join(', '),cover:b.cover?.large||b.cover?.medium||b.cover?.small||''};
 }
-// One verified local example provides a deterministic end-to-end test independent of catalogs.
-const VERIFIED_BOOKS={'9783473586745':{title:'Never Trust Your Fake Husband',author:'Ally Carter',isbn:'9783473586745',series:'The Blonde Identity Series',cover:''}};
 async function findBook(){
  const raw=$('lookup-isbn').value.trim()||$('form').elements.namedItem('isbn').value.trim();
  const isbn=isbnClean(raw),isIsbn=validISBN(isbn);
  if(!isIsbn&&raw.length<3){lookupMessage('Bitte eine gültige ISBN oder einen Buchtitel eingeben.');return}
  if(isIsbn){$('lookup-isbn').value=isbn;$('form').elements.namedItem('isbn').value=isbn}
  $('lookup').disabled=true;lookupMessage('Buchdaten werden gesucht …');
- let info=VERIFIED_BOOKS[isbn]||null,reachable=0,errors=[];
+ let info=null,reachable=0,errors=[];
  const sources=isIsbn?[
+  ['lobid Deutsche Bibliotheken',`https://lobid.org/resources/search?q=${encodeURIComponent('isbn:'+isbn)}&format=json&size=5`,'lobid'],
   ['Open Library Bücher',`https://openlibrary.org/api/books?bibkeys=ISBN:${encodeURIComponent(isbn)}&format=json&jscmd=data`,'book'],
   ['Open Library Suche',`https://openlibrary.org/search.json?isbn=${encodeURIComponent(isbn)}&limit=5`,'search'],
   ['Open Library Ausgabe',`https://openlibrary.org/isbn/${encodeURIComponent(isbn)}.json`,'edition']
- ]:[['Open Library Titelsuche',`https://openlibrary.org/search.json?title=${encodeURIComponent(raw)}&limit=10`,'search']];
+ ]:[['lobid Deutsche Bibliotheken',`https://lobid.org/resources/search?q=${encodeURIComponent(raw)}&format=json&size=5`,'lobid'],['Open Library Titelsuche',`https://openlibrary.org/search.json?title=${encodeURIComponent(raw)}&limit=10`,'search']];
  try{
   for(const [name,url,type] of sources){if(info?.title)break;
    try{const j=await fetchJson(url);reachable++;
+    if(type==='lobid'){
+      const hit=(j.member||[]).find(x=>x.title);
+      if(hit){const title=typeof hit.title==='string'?hit.title:(hit.title?.[0]||'');
+       const contributions=hit.contribution||[];
+       const authors=contributions.flatMap(c=>(c.agent||[]).map(a=>a.label||a.name||'')).filter(Boolean);
+       info={title,author:authors.join(', '),cover:'',isbn:isIsbn?isbn:''};
+      }
+    }
     if(type==='book'){const b=j['ISBN:'+isbn];if(b?.title)info={title:b.title,author:(b.authors||[]).map(a=>a.name).filter(Boolean).join(', '),cover:b.cover?.medium||'',isbn}}
     if(type==='search'){const b=j.docs?.find(x=>x.title);if(b)info={title:b.title,author:(b.author_name||[]).join(', '),cover:b.cover_i?`https://covers.openlibrary.org/b/id/${b.cover_i}-M.jpg`:'',isbn:isIsbn?isbn:(b.isbn||[]).find(validISBN)||''}}
     if(type==='edition'&&j.title){let author='';if(j.authors?.length){try{const a=await fetchJson('https://openlibrary.org'+j.authors[0].key+'.json');author=a.name||''}catch{}}info={title:j.title,author,cover:j.covers?.[0]?`https://covers.openlibrary.org/b/id/${j.covers[0]}-M.jpg`:'',isbn}}
    }catch(e){errors.push(name+': '+(e.message||'Verbindungsfehler'))}
   }
-  if(!info){lookupMessage(reachable?'In Open Library keine passenden Buchdaten gefunden. Die ISBN kann trotzdem gespeichert werden.':'Buchkatalog derzeit nicht erreichbar: '+errors.join('; '));return}
+  if(!info){lookupMessage(reachable?'In den abgefragten Buchkatalogen keine passenden Buchdaten gefunden. Die ISBN kann trotzdem gespeichert werden.':'Buchkatalog derzeit nicht erreichbar: '+errors.join('; '));return}
   const f=$('form').elements;
   if(f.namedItem('title').value.trim()&&!confirm('Vorhandenen Titel ersetzen?'))return;
   f.namedItem('title').value=info.title;
@@ -74,51 +81,64 @@ function stopScanner(){
 }
 $('stop-scan').onclick=stopScanner;
 async function startScanner(){
- stopScanner();lookupMessage('Scanner wird gestartet …');
- if(!navigator.mediaDevices?.getUserMedia){lookupMessage('Kamera nicht verfügbar.');return}
- const video=$('scan-video');$('scan-controls').classList.add('active');scanLoop=true;
+ stopScanner();scanLoop=true;$('scan-controls').classList.add('active');
+ lookupMessage('Barcode-Erkennung wird geladen …');
  try{
-  // Native detection where available; on other browsers use ZXing continuous decoding.
-  if('BarcodeDetector' in window){
-   let detector;
-   try{detector=new BarcodeDetector({formats:['ean_13','ean_8']})}catch{}
-   if(detector){
-    const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}},audio:false});
-    if(!scanLoop){stream.getTracks().forEach(t=>t.stop());return}
-    scanStream=stream;video.srcObject=stream;await video.play();
-    lookupMessage('Scanner aktiv – Strichcode mittig vor die Kamera halten.');
-    const loop=async()=>{
-     if(!scanLoop)return;
-     if(!scanBusy&&video.readyState>=2){scanBusy=true;try{const results=await detector.detect(video);for(const r of results){const found=isbnClean(r.rawValue);if(validISBN(found)){onScanned(found);return}}}catch(e){lookupMessage('Native Erkennung fehlgeschlagen; starte Ersatzscanner …');stopScanner();startZXScanner();return}finally{scanBusy=false}}
-     if(scanLoop)scanTimer=setTimeout(loop,180);
-    };loop();return;
-   }
-  }
-  await startZXScanner();
- }catch(e){stopScanner();lookupMessage('Kamera konnte nicht gestartet werden: '+(e.message||e))}
-}
-async function startZXScanner(){
- try{
-  if(!scanLoop){scanLoop=true;$('scan-controls').classList.add('active')}
   await loadScannerLibrary();
   if(!scanLoop)return;
   const ZX=window.ZXing;
-  const hints=new Map([[ZX.DecodeHintType.POSSIBLE_FORMATS,[ZX.BarcodeFormat.EAN_13,ZX.BarcodeFormat.EAN_8]],[ZX.DecodeHintType.TRY_HARDER,true]]);
-  const reader=new ZX.BrowserMultiFormatReader(hints,250);scanReader=reader;
-  lookupMessage('Scanner aktiv – Strichcode mittig vor die Kamera halten.');
+  const hints=new Map([[ZX.DecodeHintType.POSSIBLE_FORMATS,[ZX.BarcodeFormat.EAN_13]],[ZX.DecodeHintType.TRY_HARDER,true]]);
+  const reader=new ZX.BrowserMultiFormatReader(hints,180);
+  scanReader=reader;
+  lookupMessage('Scanner bereit. Halte den Strichcode ruhig und vollständig ins Bild.');
+  // Use continuous ZXing decoding instead of the native detector that previously
+  // returned zero results forever on some devices.
   const controls=await reader.decodeFromVideoDevice(undefined,$('scan-video'),(result,error)=>{
    if(!scanLoop||!result)return;
-   const found=isbnClean(result.getText?.()||result.text||'');if(validISBN(found))onScanned(found);
+   const value=isbnClean(result.getText?.()||result.text||'');
+   if(validISBN(value))onScanned(value);
   });
   if(controls?.stop)scanControls=controls;
- }catch(e){stopScanner();lookupMessage('Barcode-Erkennung nicht verfügbar: '+(e.message||e)+'. ISBN kann von Hand eingegeben werden.')}
+ }catch(e){
+  if(!scanLoop)return;
+  lookupMessage('Ersatzscanner wird gestartet …');
+  try{await startNativeScanner()}
+  catch(err){stopScanner();lookupMessage('Scanner konnte nicht gestartet werden: '+(err.message||err)+'. Bitte ISBN eintippen.')}
+ }
+}
+async function startNativeScanner(){
+ if(!('BarcodeDetector'in window))throw Error('Barcode-Erkennung im Browser nicht verfügbar');
+ const detector=new BarcodeDetector({formats:['ean_13']});
+ const video=$('scan-video');
+ const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}},audio:false});
+ if(!scanLoop){stream.getTracks().forEach(t=>t.stop());return}
+ scanStream=stream;video.srcObject=stream;await video.play();
+ lookupMessage('Ersatzscanner aktiv – Strichcode ruhig ins Bild halten.');
+ const loop=async()=>{
+  if(!scanLoop)return;
+  if(!scanBusy&&video.readyState>=2){
+   scanBusy=true;
+   try{
+    const results=await detector.detect(video);
+    for(const r of results){
+     const found=isbnClean(r.rawValue);
+     if(validISBN(found)){onScanned(found);return}
+    }
+   }catch(e){stopScanner();lookupMessage('Barcode-Erkennung fehlgeschlagen: '+(e.message||e));return}
+   finally{scanBusy=false}
+  }
+  if(scanLoop)scanTimer=setTimeout(loop,200);
+ };
+ loop();
 }
 function loadScannerLibrary(){
  if(window.ZXing?.BrowserMultiFormatReader)return Promise.resolve();
  return new Promise((resolve,reject)=>{
-  const s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js';
-  s.onload=()=>window.ZXing?.BrowserMultiFormatReader?resolve():reject(Error('Scanner-Bibliothek fehlt'));
-  s.onerror=()=>reject(Error('Scanner-Bibliothek konnte nicht geladen werden'));document.head.appendChild(s);
+  const script=document.createElement('script');
+  script.src='https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js';
+  script.onload=()=>window.ZXing?.BrowserMultiFormatReader?resolve():reject(Error('Bibliothek nicht verfügbar'));
+  script.onerror=()=>reject(Error('Scanner-Bibliothek konnte nicht geladen werden'));
+  document.head.appendChild(script);
  });
 }
 function onScanned(isbn){stopScanner();$('lookup-isbn').value=isbn;$('form').elements.namedItem('isbn').value=isbn;lookupMessage('ISBN erkannt: '+isbn+'. Suche Buchdaten …');findBook()}
