@@ -1,3 +1,4 @@
+
 'use strict';
 const KEY='meine-buecher-v1';let books=[];let editing=null;let currentCover='';
 let scanReader=null,scanStream=null,scanLoop=false;
@@ -18,6 +19,74 @@ load();render();if('serviceWorker'in navigator&&location.protocol==='https:')nav
 const isbnClean=x=>String(x||'').replace(/[^0-9Xx]/g,'').toUpperCase();
 function validISBN(x){if(x.length===13)return /^\d{13}$/.test(x)&&[...x].reduce((a,c,i)=>a+Number(c)*(i%2?3:1),0)%10===0;if(x.length===10){if(!/^\d{9}[\dX]$/.test(x))return false;return [...x].reduce((a,c,i)=>a+(10-i)*(c==='X'?10:Number(c)),0)%11===0}return false}
 function lookupMessage(t){$('lookup-status').textContent=t}
+
+// Normalize catalog metadata without changing the ISBN or stored books.
+function decodeCatalogText(value){
+ const el=document.createElement('textarea');
+ let text=String(value||'');
+ for(let i=0;i<3;i++){
+  const next=text.replace(/&#(?:x([0-9a-f]+)|([0-9]+));?/gi,(_,hex,dec)=>{
+   const n=parseInt(hex||dec,hex?16:10);
+   return n>=32&&n<=0x10ffff?String.fromCodePoint(n):'';
+  }).replace(/&(?:amp|quot|apos|lt|gt|nbsp);/gi,entity=>{
+   el.innerHTML=entity;return el.value;
+  });
+  if(next===text)break;
+  text=next;
+ }
+ return text.replace(/[\u0091-\u0094\u0096-\u0097\u0098\u009c]/g,'')
+  .replace(/\[(?:durchgestrichen|gestrichen)\]/gi,'')
+  .replace(/\s+/g,' ').trim();
+}
+function cleanBookTitle(value){
+ let title=decodeCatalogText(value).replace(/^[\s"'„“”‘’]+|[\s"'„“”‘’]+$/g,'').trim();
+ // DNB records can contain the English main title and a German subtitle.
+ title=title.replace(/\s*[:;]\s*/g,' – ').replace(/\s+[–-]\s+/g,' – ');
+ return title;
+}
+function cleanAuthor(value){
+ const name=decodeCatalogText(value);
+ if(!name.includes(','))return name;
+ return name.split(/\s*;\s*/).map(person=>{
+  const m=person.match(/^([^,]+),\s*([^,]+)$/);
+  return m?m[2].trim()+' '+m[1].trim():person;
+ }).join('; ');
+}
+async function findCoverByISBN(isbn){
+ if(!validISBN(isbn))return '';
+ // Open Library responds with 404 for absent covers when default=false.
+ try{
+  const url='https://covers.openlibrary.org/b/isbn/'+encodeURIComponent(isbn)+'-M.jpg?default=false';
+  const response=await fetch(url,{method:'GET',cache:'no-store'});
+  if(response.ok && response.headers.get('content-type')?.startsWith('image/') && Number(response.headers.get('content-length')||1000)>100)return url;
+ }catch(e){}
+ try{
+  const j=await fetchJson('https://www.googleapis.com/books/v1/volumes?q=isbn:'+encodeURIComponent(isbn)+'&maxResults=5');
+  const match=(j.items||[]).find(item=>(item.volumeInfo?.industryIdentifiers||[]).some(id=>isbnClean(id.identifier)===isbn));
+  const url=match?.volumeInfo?.imageLinks?.thumbnail||match?.volumeInfo?.imageLinks?.smallThumbnail||'';
+  return url.replace(/^http:/,'https:');
+ }catch(e){}
+ return '';
+}
+async function applyCatalogResult(data,isbn,source){
+ const f=$('form').elements;
+ if(f.namedItem('title').value.trim()&&!confirm('Vorhandenen Titel ersetzen?'))return false;
+ f.namedItem('title').value=cleanBookTitle(data.title);
+ if(data.author)f.namedItem('author').value=cleanAuthor(data.author);
+ if(data.series)f.namedItem('series').value=decodeCatalogText(data.series);
+ if(data.volume)f.namedItem('volume').value=data.volume;
+ if(data.price)f.namedItem('price').value=String(data.price).replace('.',',');
+ if(isbn){f.namedItem('isbn').value=isbn;$('lookup-isbn').value=isbn}
+ if(data.cover&&!currentCover){currentCover=data.cover;updateCoverPreview()}
+ lookupMessage('✓ Buchdaten übernommen über '+source+'. Cover wird geprüft …');
+ if(!currentCover&&isbn){
+  const cover=await findCoverByISBN(isbn);
+  if(cover){currentCover=cover;updateCoverPreview()}
+ }
+ lookupMessage('✓ Buchdaten übernommen über '+source+(currentCover?' (mit Cover).':'. Kein Online-Cover gefunden; eigenes Foto möglich.')+' Bitte prüfen und speichern.');
+ return true;
+}
+
 async function fetchJson(url){
  const controller=new AbortController();
  const timeout=setTimeout(()=>controller.abort(),14000);
@@ -43,16 +112,8 @@ async function findBook(){
   try{
    const data=await fetchJson(workerUrl.replace(/\/$/,'')+'/?isbn='+encodeURIComponent(isbn));
    if(data?.found===true && data?.title){
-    if(!f.namedItem('title').value.trim()||confirm('Vorhandenen Titel ersetzen?')){
-     f.namedItem('title').value=data.title;
-     if(data.author)f.namedItem('author').value=data.author;
-     if(data.series)f.namedItem('series').value=data.series;
-     if(data.volume)f.namedItem('volume').value=data.volume;
-     if(data.price)f.namedItem('price').value=String(data.price).replace('.',',');
-     if(data.cover&&!currentCover){currentCover=data.cover;updateCoverPreview()}
-     lookupMessage('✓ Buchdaten übernommen über '+(data.source||'Buchhandel')+'. Bitte prüfen und speichern.');
-     $('lookup').disabled=false;return;
-    }
+    await applyCatalogResult(data,isbn,data.source||'Buchkatalog');
+    $('lookup').disabled=false;return;
    }
   }catch(e){lookupMessage('Buchhandelsdienst: '+e.message+'. Weitere Kataloge werden versucht …')}
  }
@@ -111,12 +172,7 @@ async function findBook(){
   const results=await Promise.all(jobs);
   found=results.find(x=>x?.title)||null;
   if(!found){lookupMessage('Kein Treffer bei den angeschlossenen Buchquellen.  Die ISBN ist übernommen. Titel und Autor können manuell ergänzt werden. '+(errors.length?'Nicht erreichbar: '+errors.join(' | '):''));return}
-  if(f.namedItem('title').value.trim()&&!confirm('Vorhandenen Titel ersetzen?'))return;
-  f.namedItem('title').value=found.title;
-  if(found.author)f.namedItem('author').value=found.author;
-  if(found.isbn){f.namedItem('isbn').value=found.isbn;$('lookup-isbn').value=found.isbn}
-  if(found.cover&&!currentCover){currentCover=found.cover;updateCoverPreview()}
-  lookupMessage('✓ Buch gefunden über '+found.source+': '+found.title+'. Bitte prüfen und speichern.');
+  await applyCatalogResult(found,isIsbn?isbn:'',found.source);
  }catch(e){lookupMessage('Buchsuche fehlgeschlagen: '+(e.message||e)+'. Die ISBN bleibt gespeichert.');}
  finally{$('lookup').disabled=false}
 }
